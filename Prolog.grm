@@ -1,0 +1,85 @@
+(***************************************************************************
+ *
+ * ML-YACC Parser for Prolog
+ *
+ ***************************************************************************)
+
+local
+  val counter = ref 0;
+  fun next () = (counter := !counter + 1; !counter)
+in
+  fun temp () = "$x" ^ (Int.toString (next ()))
+end;
+
+%%
+%header (functor PrologLrValsFun (structure Token : TOKEN
+                                  structure Syntax : SYNTAX ) : Prolog_LRVALS)
+
+%name Prolog
+
+%verbose
+%pure
+
+(*  %pos declares the type of positions for terminals.  Each symbol has
+    a left and right position.  The lexer defines that the
+    left pos = right pos = line number.                                  *)
+
+%pos int
+
+(*  End-of-parse must include at least end-of-file token.  *)
+
+%eop EOF
+
+(*  The start non terminal.  *)
+
+%start clause
+
+%term
+    EOF
+  | FAIL
+  | CUT
+  | TS
+  | DOT
+  | COMMA
+  | QUEST
+  | RPAREN
+  | LPAREN
+  | BAR
+  | RBRCKT
+  | LBRCKT
+  | UNDER
+  | ID  of string
+  | VAR of string
+
+%nonterm
+    clause   of Syntax.HornClause
+  | term     of Syntax.Term
+  | termlist of Syntax.Term list
+
+%%
+clause	: term DOT			(Syntax.Headed (term, []))
+	| term TS termlist DOT		(Syntax.Headed (term, termlist))
+	| termlist QUEST		(Syntax.Headless (termlist))
+
+termlist : term				([term])
+	| termlist COMMA term		(termlist @ [term])
+
+term	: UNDER				(Syntax.Var (Header.temp (), 0))
+	| VAR				(Syntax.Var (VAR, 0))
+	| CUT				(Syntax.Fun ("!", []))
+	| ID				(Syntax.Fun (ID, []))
+	| ID LPAREN termlist RPAREN	(Syntax.Fun (ID, termlist))
+	| LBRCKT RBRCKT		        (Syntax.Fun ("$Nil", []))
+	| LBRCKT termlist RBRCKT	(List.foldr
+					     (fn (x, y) => 
+						 Syntax.Fun ("$Cons", [x, y])
+					     )
+					     (Syntax.Fun ("$Nil", []))
+					     termlist)
+	| LBRCKT termlist BAR term RBRCKT
+					(List.foldr
+					     (fn (x, y) =>
+						 Syntax.Fun ("$Cons", [x, y])
+					     )
+					     term
+					     termlist)
