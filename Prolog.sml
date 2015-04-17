@@ -4,7 +4,6 @@ fun AddTerm(t1) = (termlist := !termlist @ [t1]);
 fun CleanTL() = (termlist := []);
 
 (*This is the Unification and Substitution steps*)
-(*************************************************************************************)
 type Substitution = string * int  -> Term;
 
 val empty : Substitution = fn x => Var x;
