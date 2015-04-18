@@ -1,5 +1,7 @@
 val termlist: ((Term * Term) list) ref = ref [];
+val counter: int = 0;
 val dblistforbacktrack: (HornClause list) ref = ref [];
+fun AddDBtail(tail) = (dblistforbacktrack := !dblistforbacktrack @ [tail]);
 fun AddTerm(t1) = (termlist := !termlist @ [t1]);
 fun CleanTL() = (termlist := []);
 
@@ -49,10 +51,6 @@ fun unify (t1, t2) =
 (*This is the meat of the solving - we call unify with the term from y and each head term in the database.*)
 (* Find any instance of variable in variable, and replace with the substitution *)
 
-fun
-	Subst()
-fun 
-	UnSubst()
 
 fun 	VarsToList(nil, _)  = ""       |
 	VarsToList(_, nil)  = ""       |
@@ -110,14 +108,16 @@ fun
   We will call unify on every term in our database.
   We will then call this function again for every element in our query list *)
 fun 
-    OpenY (nil, _) = print ""  |
-    OpenY (_, nil) = print ""  |
-    OpenY (yhead::ytail, db : HornClause list) = 
-	(
+    OpenY (nil, _, _) = print ""  |
+    OpenY (_, nil, _) = print ""  |
+    OpenY (yhead::ytail, db : HornClause list,counter) = 
+	  (
+	  OutLine("Dealing with term "^ Int.toString(counter));
 	  OutLine("Entering OpenDB...");                    (*DB*)
 	  OpenDB(yhead,db)
 	    handle non_solvable => raise non_solvable;
-	  OpenY(ytail,db)
+	  OpenY(ytail,db,(counter + 1))
+	    handle non_solvable => (OutLine("Problem in tail of this query"); raise non_solvable)
 	);
 
 
@@ -126,7 +126,7 @@ fun
 fun OutQuery (y : Term list, database : HornClause list) =
 	(
           OutLine ("Entering OpenY..."); (*DB*)
-	  OpenY(y,database)
+	  OpenY(y,database,0)
 	   handle non_solvable => raise non_solvable
  	);
 
