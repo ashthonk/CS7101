@@ -1,7 +1,4 @@
 val termlist: ((Term * Term) list) ref = ref [];
-val counter: int = 0;
-val dblistforbacktrack: (HornClause list) ref = ref [];
-fun AddDBtail(tail) = (dblistforbacktrack := !dblistforbacktrack @ [tail]);
 fun AddTerm(t1) = (termlist := !termlist @ [t1]);
 fun CleanTL() = (termlist := []);
 
@@ -17,7 +14,7 @@ fun comp (S, R) = fn v => value S (R v);
        
 fun upd (v, t) S = comp (fn w => if w = v then t else Var w, S);
        
-exception non_unifiable and occurs_check and length and next_in_list and non_solvable;
+exception non_unifiable and solved and occurs_check and length and next_in_list and non_solvable;
 fun
   top S (Var v) = S v   |
   top S (x)     = x     ;
@@ -52,38 +49,38 @@ fun unify (t1, t2) =
 (* Find any instance of variable in variable, and replace with the substitution *)
 
 
-fun 	VarsToList(nil, _)  = ""       |
-	VarsToList(_, nil)  = ""       |
+fun 	VarsToList(nil, _)  = print ""  |
+	VarsToList(_, nil)  = print ""  |
 	VarsToList(xh::xt,zh::zt) =
 	(
-		OutLine("Entering VarsToList");
+		(*OutLine("Entering VarsToList");*)
 		if not(xh=zh) then (AddTerm(xh,zh); VarsToList(xt,zt)) else VarsToList(xt,zt)
 	); 
 				
 fun 
    ExtractVars(Fun(x,xlist),Fun(z,zlist)) =
 	(
-		OutLine("Entering ExtractVars");
+		(*OutLine("Entering ExtractVars");*)
 		VarsToList(xlist,zlist)	      
 	);
 
 fun 
    Solve (y, x as (Headed(headedclausehead,headedclausetail))) =
 	(
-	   OutLine("Attempting to unify "^PrintTerm y^" with "^PrintTerm headedclausehead^"...");	(*DB*)
+	   (*OutLine("Attempting to unify "^PrintTerm y^" with "^PrintTerm headedclausehead^"...");*)	(*DB*)
 	   let 
 		val S = unify(y,headedclausehead)
 	     		handle non_unifiable => (
-				      OutLine("This unification was unsuccessful. Backtracking...");
+				      (*OutLine("This unification was unsuccessful. Backtracking...");*)
 	    			      raise next_in_list) 
 	    in
-	   	OutLine("Unification of " ^PrintTerm y^" with "^PrintTerm headedclausehead^" succeed!");
+	   	(*OutLine("Unification of " ^PrintTerm y^" with "^PrintTerm headedclausehead^" succeed!"); *)
 	   	if headedclausetail=nil then 
-					  (OutLine("We unified a fact! ");
+					  ((*OutLine("We unified a fact! ");*)
 					   ExtractVars(y, (value S y))
 					  )
 	 				else 
-					   (OutLine("Oh no! A rule!..");
+					   ((*OutLine("Oh no! A rule!..");*)
 					    ExtractVars(y, (value S y))
 					   )
 	   end	
@@ -93,16 +90,7 @@ fun
 
 (*Once we have selected the element of our query list to check, we will then call unify with each database entry until a success. Since our database is a list of HornClauses, we must extract the head term of each horn clause. This may be redundant for facts, but it is necessary for rules, which may take the form of: 
 	e.g. a(X,f(X) :- b(X)
-We will need to first call unify on the head of these Headed clauses, then apply this substitution to each member of the tail. 
-*)
-fun 
-    OpenDB (y, dbhead::dbtail : HornClause list) =
-	(
-	   OutLine("Entering Solve");
-	   Solve (y, dbhead)
-	    handle next_in_list => if dbtail = nil then raise non_solvable else OpenDB (y,dbtail)
-	);
-
+We will need to first call unify on the head of these Headed clauses, then apply this substitution to each member of the tail. *)
 
 (*This function will open our query list. 
   We will call unify on every term in our database.
@@ -110,24 +98,36 @@ fun
 fun 
     OpenY (nil, _, _) = print ""  |
     OpenY (_, nil, _) = print ""  |
-    OpenY (yhead::ytail, db : HornClause list,counter) = 
-	  (
-	  OutLine("Dealing with term "^ Int.toString(counter));
-	  OutLine("Entering OpenDB...");                    (*DB*)
-	  OpenDB(yhead,db)
-	    handle non_solvable => raise non_solvable;
-	  OpenY(ytail,db,(counter + 1))
-	    handle non_solvable => (OutLine("Problem in tail of this query"); raise non_solvable)
+    OpenY (y as (yhead::ytail), db as (dbhead::dbtail) : HornClause list, database : HornClause list) =
+	(
+	  Solve(yhead, dbhead)
+	    handle next_in_list => (if (dbtail = nil) 
+				    then raise non_solvable 
+                                    else (OpenY(y,dbtail, database)
+                                         handle non_solvable => raise non_solvable 
+                                         |      solved       => raise solved));
+	   if (not(ytail = nil)) 
+	   then (
+		Subst(ytail, termlist)	(*Termlist needs work *)
+		(OpenY(ytail, database, database) 
+                  handle non_solvable => (if (dbtail = nil) 
+                                         then raise non_solvable 
+                                         else (OpenY(y, dbtail, database)
+					       handle non_solvable => raise non_solvable 
+                                               |      solved => raise solved))
+                  |      solved      => raise solved)
+		) 
+            else raise solved
 	);
-
 
 
 (*Called from Prolog when someone types in a query*)
 fun OutQuery (y : Term list, database : HornClause list) =
 	(
-          OutLine ("Entering OpenY..."); (*DB*)
-	  OpenY(y,database,0)
+          (*OutLine ("Entering OpenY..."); (*DB*)*)
+	  OpenY(y,database,database)
 	   handle non_solvable => raise non_solvable
+             |      solved     => raise solved
  	);
 
 
@@ -142,8 +142,8 @@ fun Prolog (x as (Headed (Var _, _))) =
     (
      CleanTL();  
      OutLine ("query:  " ^ PrintClause x);
-     OutLine ("Entering OutQuery..."); (*DB*)
+     (*OutLine ("Entering OutQuery..."); (*DB*)*)
      OutQuery (y, !db)
-      handle non_solvable => OutLine ("No");
-     OutSol(!termlist)
+      handle non_solvable => OutLine ("No")
+      |        solved     => OutSol (!termlist)
     );
