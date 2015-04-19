@@ -80,7 +80,7 @@ fun P3(xh::xt : Term list,zh::zt : Term list) =
 fun P2(Fun(x,xlist),Fun(z,zlist)) = P3(xlist,zlist);
 fun P1(yh, S) = P2(yh, (value S yh));
 
-fun Search'(st : Term, []) =() | Search'(st : Term,(tlh1,tlh2)::tlt : (Term * Term) list) = ( if (st=tlh1) then AddTerm((tlh1,tlh2),unabridgedtl) else Search'(st,tlt));
+fun Search'(st : Term, []) =() | Search'(st : Term,(tlh1,tlh2)::tlt : (Term * Term) list) = (OutLine("DBBBB:::::   "^PrintTerm(st)^" "^PrintTerm(tlh1)); if (st=tlh1) then AddTerm((tlh1,tlh2),unabridgedtl) else Search'(st,tlt));
 fun RDBS3 (ah::at,tl) = (Search'(ah,tl); if (not(at = [])) then RDBS3(at,tl) else ());
 fun RDBS2(Fun(f,args),termlist) = RDBS3(args,termlist);
 fun RuleDBSanatize(yhead,termlist) = (RDBS2(yhead,termlist));
@@ -93,31 +93,36 @@ fun
 
 	if(hct = nil)
          then( 	
+	 
 	 let val S = unify(yhead, hch)
-		  handle non_unifiable => (if(dbtail = []) then (OutLine("Leaving: "); raise non_solvable) else ( Solver(y,dbtail,database,querylist))); 
+		  handle non_unifiable => (if(dbtail = []) then (raise non_solvable) else (Solver(y,dbtail,database,que          rylist ))) 
 	 in
 	      (*Fact*)
 	     (if (not(ytail = nil)) 
 	     then (
+		
 		Solver((map (value S) ytail) : Term list, database, database, querylist)
 		  handle non_solvable =>if (dbtail = []) 
-					then( 
+					then (
 					      raise non_solvable) 
                                         else ( 
                                               Solver(y,dbtail,database,querylist))
 		   |     solved       => (P1(yhead,S);  raise solved)
 		 )
-	      else (P1(yhead, S);  raise solved))
-	  end)
+	      else (P1(yhead, S);  raise solved)	
+           end)
 	   else (*Rule*) 
 	   (    
 		let val S = unify(hch,yhead)
 			 handle non_unifiable => (if(dbtail = []) then ( raise non_solvable) else ( Solver(y,dbtail,database,querylist)));
 		in
 		(*Using hct as the tail of the rule,*)
+               
+	
+	
 		Solver((map (value S) hct) : Term list, database, database, querylist)
-		  handle non_solvable => if (dbtail = []) then ( raise non_solvable) else ( Solver(y,dbtail,database,querylist))
-		  |      solved       => (P1(yhead,S); ( RuleDBSanatize((value S hch), !termlist);raise qsolved) )
+		  handle non_solvable => if (dbtail = []) then (raise non_solvable) else (Solver(y,dbtail,database,querylist))
+		  |      solved       => (P1(yhead,S); (RuleDBSanatize((value S hch), !termlist);raise qsolved) )
 		end          
   	   )
 	
@@ -129,14 +134,10 @@ fun
 (*OutQuery - Handles the initial call to the solver. Handles a few special cases as well*)
 fun OutQuery (y as (yhead::ytail) : Term list, database as (dbh::dbt) : HornClause list) =
 	(
-	 let val t = 0;
-	 in 
 	  Solver(y,database,database,y)
 	   handle solved => raise solved
 		 | non_solvable => if dbt = [] then raise non_solvable else Solver(y,dbt,database,y)
-		 | qsolved =>  raise qsolved;
-	   OutLine("")
-         end
+		 | qsolved =>  raise qsolved
  	);
 (*End OutQuery*)
 
