@@ -1,20 +1,21 @@
 val termlist: ((Term * Term) list) ref = ref [];
+val unabridgedtl: ((Term * Term) list) ref = ref[];
 fun AddTerm(t1) = (termlist := !termlist @ [t1]);
-fun CleanTL() = (termlist := []);
+fun CleanTL(tl) = (tl := []);
 
 (*This is the Unification and Substitution steps*)
 type Substitution = string * int  -> Term;
 
 val empty : Substitution = fn x => Var x;
-
-fun value S (Var v)         = ((S v))                        |    
-    value S (Fun (f, args)) = (Fun (f, map (value S) args)); 
- 
-fun comp (S, R) = fn v => value S (R v);
+fun addone (Var(a:string,b:int)) = (OutLine("Addone called");Var(a,b+1));
+fun 
+    value S (Var v) = (S v) |
+    value S (Fun(f,args)) = (Fun (f,map (value S) args)); 
+fun comp (S, R) = (OutLine ("Comp called"); fn v => value S (R v));
        
-fun upd (v, t) S = comp (fn w => if w = v then t else Var w, S);
+fun upd (v, t) S = (OutLine("Upd called"); comp (fn w => if w = v then t else Var w, S));
        
-exception non_unifiable and solved and occurs_check and length and next_in_list and non_solvable;
+exception non_unifiable and solved and qsolved and occurs_check and length and next_in_list and non_solvable;
 fun
   top S (Var v) = S v   |
   top S (x)     = x     ;
@@ -32,7 +33,7 @@ fun unify' ((t1,t2),S) =
         val t1' = top S t1 and t2' = top S t2;
     in
         case (t1', t2') of
-                (Var v,Var w)           => if (v=w) then S else upd(v,t2')S                        |
+                (Var v,Var w)           => if (v=w) then (upd(v,addone(t2))S) else (OutLine("C12");upd(v,addone(t2'))S )                      |
                 (Var v, _)              => if occurs v t2 then raise occurs_check else upd(v,t2')S |
                 (_, Var w)              => if occurs w t1 then raise occurs_check else upd(w,t1')S |
                 (Fun (f1, args1), Fun (f2, args2)) =>
@@ -40,46 +41,78 @@ fun unify' ((t1,t2),S) =
     end;
 
 fun unify (t1, t2) = 
-  ( unify' ((t1, t2), empty)
-    handle occurs_check => raise non_unifiable
+  ( 
+  
+   unify' ((t1, t2), empty)
+        handle occurs_check => raise non_unifiable
          | length       => raise non_unifiable 
- );	
-(************************************************************************************************)
-(*This is the meat of the solving - we call unify with the term from y and each head term in the database.*)
-(* Find any instance of variable in variable, and replace with the substitution *)
-
-	
+            
+ );
 fun Search(st : Term, []) = false | Search(st : Term, (tlh1,tlh2)::tlt : (Term * Term) list) = if (st=tlh1) then true else Search(st,tlt);
-fun P3(xh::xt : Term list,zh::zt : Term list) = if xt = [] then (if not(Search(xh,!termlist)) then AddTerm(xh,zh) else ()) else (if not(Search(xh,!termlist)) then (AddTerm(xh,zh); P3(xt,zt)) else (P3(xt,zt))); 
+fun P3(xh::xt : Term list,zh::zt : Term list) = 
+		if xt = [] 
+		then (if not(Search(xh,!termlist)) 
+		      then if not(xh=zh) 
+                           then AddTerm(xh,zh) 
+                           else () 
+                      else ()) 
+               else (if not(Search(xh,!termlist)) 
+                     then (if not(xh=zh) 
+                           then AddTerm(xh,zh) 
+                           else (); 
+                           P3(xt,zt)) 
+                     else (P3(xt,zt))); 
 fun P2(Fun(x,xlist),Fun(z,zlist)) = P3(xlist,zlist);
 fun P1(yh, S) =
 	P2(yh, (value S yh));
 	  
-
 fun 
-    OpenY (y as (yhead::ytail) , ((Headed(hch,hct))::dbtail), database ,querylist) =
+    OpenY (y as (yhead::ytail), ((Headed(hch,hct))::dbtail), database,querylist,counter)=
 	(
-	let val S = unify(yhead,hch)
-		  handle non_unifiable => (if(dbtail = []) then raise non_solvable else OpenY(y,dbtail,database,querylist))  
+	OutLine("Attempting to unify "^PrintTerm(yhead)^ " with "^PrintTerm(hch));
+	 let val S = unify(yhead, hch)
+		  handle non_unifiable => (if(dbtail = []) then (OutLine("Leaving: "^Int.toString(counter)); raise non_solvable) else (OutLine("Entering: "^Int.toString(counter + 1)); OpenY(y,dbtail,database,querylist, (counter + 1)))); 
 	in
+	
+	if(hct = nil)
+	   then (*Fact*)
 	     if (not(ytail = nil)) 
-	     then 
-		OpenY((map (value S) ytail) : Term list, database, database, querylist)
-		  handle non_solvable =>if (dbtail = []) then raise non_solvable else OpenY(y,dbtail,database,querylist)
-		   |     solved       => (P1(yhead,S); raise solved)
+	     then (
+		OutLine("Entering: "^ Int.toString(counter + 1));
+		OpenY((map (value S) ytail) : Term list, database, database, querylist,(counter+1))
+		  handle non_solvable =>if (dbtail = []) 
+					then (OutLine("Leaving: "^Int.toString(counter));
+					      raise non_solvable) 
+                                        else (OutLine("Entering: "^Int.toString(counter + 1)); 
+                                              OpenY(y,dbtail,database,querylist,(counter+1)))
+		   |     solved       => (P1(yhead,S); OutLine("Leaving: " ^Int.toString(counter)); raise solved)
+		 )
 		 
-		 
-             else (P1(yhead, S); raise solved)
+             else (P1(yhead, S); OutLine("Leaving: " ^ Int.toString(counter)); raise solved)
+	   else (*Rule*) 
+	   (
+                OutLine("Attempting to map value S to tail of rule...");
+		OutLine(PrintTerm(yhead)^ " => "^PrintTerm(value S yhead)^" :- "^PrintList(map (value S) hct));
+		OutLine("Entering: "^Int.toString(counter + 1));
+		OpenY((map (value S) hct) : Term list, database, database, querylist,(counter+1))
+		  handle non_solvable => if (dbtail = []) then (OutLine("Leaving: " ^ Int.toString(counter)); raise non_solvable) else (OutLine("Entering: "^Int.toString(counter + 1)); OpenY(y,dbtail,database,querylist,(counter+1)))
+		  |      solved       => (P1(yhead,S); (OutLine("Leaving: " ^ Int.toString(counter));raise qsolved))
+           )
 	end
        	); 
 
 	
 fun OutQuery (y : Term list, database as (dbh::dbt) : HornClause list) =
 	(
-	  OpenY(y,database,database,y)
+	 let val count = 0
+	 in 
+	  OutLine("Entering: 0"); 
+	  OpenY(y,database,database,y,count)
 	   handle solved => raise solved
-		 | non_solvable => if dbt = [] then raise non_solvable else OpenY(y,dbt,database,y);
+		 | non_solvable => if dbt = [] then raise non_solvable else OpenY(y,dbt,database,y,count)
+		 | qsolved => raise qsolved;
 	   OutLine("EndingOutQuery")
+         end
  	);
 
 
@@ -91,12 +124,14 @@ fun Prolog (x as (Headed (Var _, _))) =
   | Prolog (x as (Headed _)) = Assert x
   | Prolog (x as Headless y) =
     (
-     CleanTL();  
+     CleanTL(termlist); 
+     CleanTL(unabridgedtl);
      OutLine ("query:  " ^ PrintClause x);
      (*OutLine ("Entering OutQuery..."); (*DB*)*)
       OutQuery (y, !db)
       handle non_solvable => OutLine ("No")
       |        solved     => OutSol (!termlist)
+      |        qsolved    => OutSol (!termlist)
    );
 
 
