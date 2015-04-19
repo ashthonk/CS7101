@@ -55,13 +55,6 @@ fun unify (t1, t2) =
         handle occurs_check => raise non_unifiable
          | length       => raise non_unifiable;
 
-
-
-
-
-(*fun Consolidate(((Var v),(Var w))::tl) = (
-    C2(th,tl)
-)*)
 (*Search and P1-P3 will navigate the list of terms and clean out any duplicate terms prior to the final output. This can probably be done much more optimally, but I will re-iterate my novice status of functional programming languages here)*)
 fun Search(st : Term, []) = false | Search(st : Term, (tlh1,tlh2)::tlt : (Term * Term) list) = if (st=tlh1) then true else Search(st,tlt);
 fun P3(xh::xt : Term list,zh::zt : Term list) = 
@@ -80,10 +73,10 @@ fun P3(xh::xt : Term list,zh::zt : Term list) =
 fun P2(Fun(x,xlist),Fun(z,zlist)) = P3(xlist,zlist);
 fun P1(yh, S) = P2(yh, (value S yh));
 
-fun Search'(st : Term, []) =() | Search'(st : Term,(tlh1,tlh2)::tlt : (Term * Term) list) = (OutLine("DBBBB:::::   "^PrintTerm(st)^" "^PrintTerm(tlh1)); if (st=tlh1) then AddTerm((tlh1,tlh2),unabridgedtl) else Search'(st,tlt));
-fun RDBS3 (ah::at,tl) = (Search'(ah,tl); if (not(at = [])) then RDBS3(at,tl) else ());
+fun Search'(st : Term, []) =() | Search'(st : Term,(tlh1,tlh2)::tlt : (Term * Term) list) = if (st=tlh1) then AddTerm((tlh1,tlh2),!unabridgedtl) else Search'(st,tlt);
+fun RDBS3 (ah::at,termlist) = Search'(ah,termlist)
 fun RDBS2(Fun(f,args),termlist) = RDBS3(args,termlist);
-fun RuleDBSanatize(yhead,termlist) = (OutLine("CallingSanatize to get just: "^PrintTerm(yhead));RDBS2(yhead,termlist));
+fun RuleDBSanatize(yhead::ytail,termlist) = RDBS2(yhead,termlist);
 	
 
 (*This is the solver*)	  
@@ -122,7 +115,7 @@ fun
 		OutLine("Entering: "^Int.toString(counter + 1));
 		Solver((map (value S) hct) : Term list, database, database, querylist,(counter+1))
 		  handle non_solvable => if (dbtail = []) then (OutLine("Leaving: " ^ Int.toString(counter)); raise non_solvable) else (OutLine("Entering: "^Int.toString(counter + 1)); Solver(y,dbtail,database,querylist,(counter+1)))
-		  |      solved       => (P1(yhead,S); (OutLine("Leaving: " ^ Int.toString(counter)); RuleDBSanatize((value S hch), !termlist);raise qsolved) )
+		  |      solved       => (P1(yhead,S); (OutLine("Leaving: " ^ Int.toString(counter));raise qsolved))
 		end          
   	   )
 	
@@ -136,10 +129,12 @@ fun OutQuery (y as (yhead::ytail) : Term list, database as (dbh::dbt) : HornClau
 	(
 	 let val count = 0
 	 in 
+	  OutLine("Entering: 0"); 
 	  Solver(y,database,database,y,count)
 	   handle solved => raise solved
 		 | non_solvable => if dbt = [] then raise non_solvable else Solver(y,dbt,database,y,count)
-		 | qsolved =>  raise qsolved;
+		 | qsolved => (RuleDBSanatize(yhead,!termlist); raise qsolved);
+	   OutLine("EndingOutQuery")
          end
  	);
 (*End OutQuery*)
