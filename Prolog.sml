@@ -32,11 +32,13 @@ fun upd''((Var v)::at,bh::bt) =
 	if not(at = []) then comp(W,upd''(at,bt)) else W
         end )
  | upd''((Fun(v,args))::at,bh::bt) =
-       ( 
-	empty
+       (
+	if not(at=[]) then upd''(at,bt) else empty
         );
  
-fun upd'(Fun(f, args1),Fun(y,args2)) = (OutLine("upd' called for "^PrintTerm(Fun(f,args1))^":"^PrintTerm(Fun(f,args2))); upd''(args1,args2));
+fun upd'(t1 as(Fun(f, args1)),t2 as(Fun(y,args2))) = (OutLine("upd' called for "^PrintTerm(Fun(f,args1))^":"^PrintTerm(Fun(f,args2))); 
+					if (t1=t2) then empty else if not(args1 = []) then upd''(args1,args2) else empty);
+
 	
 	
 fun LevelUp(Var(x,y),level) = (OutLine("Leveling up "^x^" to "^PrintTerm(Var(x,level))); Var(x,level)) 
@@ -111,63 +113,77 @@ fun Search'(st : Term, []) =() | Search'(st : Term,(tlh1,tlh2)::tlt : (Term * Te
 fun RDBS3 (ah::at,tl) = (Search'(ah,tl); if (not(at=[])) then RDBS3(at,tl) else ());
 fun RDBS2(Fun(f,args),termlist) = RDBS3(args,termlist);
 fun RuleDBSanatize(yhead,termlist) = RDBS2(yhead,termlist);
-	
+fun yheadcheck(Fun(f,_),Fun(g,_)) = if (f=g) then true else false;
+fun checker(term,(yh::yt)) = (OutLine("Checker called, "^PrintTerm term ^ "  " ^ PrintTerm yh); if (term = yh) then true else false);	
 (*This is the solver*)	  
-fun 
-    Solver (y as (yhead::ytail), ((Headed(hch,hct))::dbtail), database,querylist,counter,level)=
-	(
 
-	if(hct = nil)
-         then( 	
-	 OutLine("Attempting to unify "^PrintTerm(yhead)^ " with "^PrintTerm(hch));
-	 let val S = unify(yhead, hch,level,nil)
-		  handle non_unifiable => (if(dbtail = []) then (OutLine("Didn't work, backtracking.."); raise non_solvable) else (OutLine("Stepping down in DB and trying again"); Solver(y,dbtail,database,querylist, (counter + 1),level))); 
-	 in
-	      (*Fact*)
-	     (if (not(ytail = nil)) 
-	     then (
-		OutLine("Entering next Y in list -- Not necessarily stepping down "^ Int.toString(counter + 1));
-		Solver((map (value S) ytail) : Term list, database, database, querylist,(counter+1),(level))
-		  handle non_solvable =>if (dbtail = []) 
-					then (OutLine("Backtracking to previous entry in query list");
-					      raise non_solvable) 
-                                        else (OutLine("Stepping down in DB and trying again"); 
-                                              Solver(y,dbtail,database,querylist,(counter+1),level))
-		   |     solved       => (P1(yhead,S); OutLine("Moving back one in list - Success return"); raise solved)
-		 )
-	      else (P1(yhead, S); OutLine("Solved all entries in Y - Success return"); raise solved))
-	  end)
-	   else (*Rule*) 
-	   (    
-		let val S = unify(hch,yhead,(level),nil)
-			 handle non_unifiable => (if(dbtail = []) then (OutLine("Backtracking to previous entry in query list "); raise non_solvable) else (OutLine("Stepping down in DB and trying again"); Solver(y,dbtail,database,querylist, (counter + 1),level)));
+fun Solver(y as (yhead::ytail), ((Headed(hch,[]))::dbtail), database, querylist, counter, level) =
+	(
+	OutLine("Trying to call unify on fact"^PrintTerm(yhead)^"|"^PrintTerm(hch));
+	let val S = unify(yhead,hch,level,nil)
+		     handle non_unifiable => (if (dbtail = []) then (OutLine("Error in QUERY, going up!"); raise non_solvable)
+								else (OutLine("5Continuing with current query, next item in db");
+								      Solver(y,dbtail,database,querylist,counter,level)
+									    handle not_solvable => raise not_solvable
+										 ))
+	in 
+		if (not(ytail=[])) (*We still have more to do*)
+		then (OutLine("4Next Y in list. Remaining:"^PrintList ytail);
+		      
+
+			if checker(yhead,ytail) then S else
+			comp(S, Solver((map (value S) ytail), database, database, querylist, counter, level)
+				handle non_solvable => if (dbtail = []) then (OutLine("This query needs to be backtracked"); 
+									      raise non_solvable)
+									else (									       
+								              OutLine("DBG:YLIST"^PrintList y^ "\nDBLIST" ^ PrintDB dbtail ^ "\n"); 
+									      Solver(y,dbtail,database,querylist,counter,level)
+									            handle not_solvable => raise not_solvable
+										     ))
+		     )
+		else (OutLine("End of y list"); S)
+	end
+	)
+ |  Solver(y as (yhead::ytail), ((Headed(hch,hct))::dbtail), database, querylist, counter, level) = 
+	(
+	OutLine("2Trying to call unify on rule"^PrintTerm(yhead)^"|"^PrintTerm(hch));
+	let val S = unify(hch,yhead,level,nil)
+		    handle non_unifiable => (if(dbtail = []) then (OutLine("That rule didn't work"); raise non_solvable)
+							     else (OutLine("1Need to try again..."); Solver(y,dbtail,database,querylist,counter,level)))
+	in	
+		OutLine("Unification complete! Attempting to map unification to rule tailCURRHCH "^PrintTerm hch^":CURRHCT:"^PrintList hct^": YHEAD: "^PrintTerm(yhead));
+		OutLine("6PrintList: "^ PrintList (map(value S) hct)); 
+		OutLine("yheadchecking "^PrintTerm yhead^" "^PrintTerm hch);
+		if (yheadcheck(yhead,hch))
+		then(
+		let val Y =  
+		comp(S,Solver((map (value S) hct),database,database,querylist,counter,(level+1)) handle non_solvable => if (dbtail = []) then (OutLine("AATHISGOTCALLED"); raise non_solvable) else (OutLine("THIS GOT CALLED");Solver(y,dbtail,database,querylist,counter,level)))
 		in
-		(*Using hct as the tail of the rule,*)
-                OutLine("Attempting to map value S to tail of rule...");
-		OutLine(PrintTerm(yhead)^ " => "^PrintTerm(yhead)^" :- "^PrintList(map (value S) hct));
-		OutLine("Working on the tail of the rule"^PrintList((map(value S) hct)));
-		Solver((map (value S) hct) : Term list, database, database, querylist,(counter+1),(level+1))
-		  handle non_solvable => if (dbtail = []) then (OutLine("Stepping out of the rule to previous entry in query list"); raise non_solvable) else (OutLine("Stepping down in DB and trying again"); Solver(y,dbtail,database,querylist,(counter+1),level))
-		  |      solved       => (P1(yhead,S); (OutLine("Leaving: " ^ Int.toString(counter));raise qsolved))
-		end          
-  	   )
+		 OutLine("Need to change "^PrintTerm yhead^" to "^PrintTerm(value Y (value S hch)));
+		 upd'(yhead,(value Y (value S hch)))
+		end
+		)
+		else (*We're done? May fail if more than one term in the rule*)S
+	end
+	);
 	
-       	); 
 
 
 (*End Solver*)	
-
+fun Print ((yhead::ytail),S) = 
+	(
+	  if not(ytail = nil) then (P1(yhead,S); Print(ytail,S)) else P1(yhead,S) 
+	);
 (*OutQuery - Handles the initial call to the solver. Handles a few special cases as well*)
 fun OutQuery (y as (yhead::ytail) : Term list, database as (dbh::dbt) : HornClause list) =
 	(
 	 let val count = 0
 	 in 
-	  OutLine("Entering: 1"); 
-	  Solver(y,database,database,y,count,1)
-	   handle solved => raise solved
-		 | non_solvable => if dbt = [] then raise non_solvable else Solver(y,dbt,database,y,count,0)
-		 | qsolved => (RuleDBSanatize(yhead,!termlist); raise qsolved);
-	   OutLine("EndingOutQuery")
+	 OutLine("7Entering: 1"); 
+	 Print(y, Solver(y,database,database,y,count,1)
+		handle  non_solvable => if dbt = [] then raise non_solvable else Solver(y,dbt,database,y,count,0));
+	  
+	 OutLine("EndingOutQuery")
          end
  	);
 (*End OutQuery*)
@@ -183,10 +199,9 @@ fun Prolog (x as (Headed (Var _, _))) =
      CleanTL(termlist); 
      CleanTL(unabridgedtl);
      OutLine ("query:  " ^ PrintClause x);
-      OutQuery (y, !db)
-      handle non_solvable => OutLine ("No")
-      |        solved     => OutSol (!termlist)
-      |        qsolved    => OutSol (!termlist) (*Can this be deleted*)
+     OutQuery (y, !db)
+      handle non_solvable => OutLine ("No");
+     OutSol(!termlist) 
    );
 
 
